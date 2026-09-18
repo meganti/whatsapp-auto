@@ -114,6 +114,10 @@ docker run -it --name whatsapp-transcriber \
   whatsapp-transcriber
 ```
 
+## Deploy em VPS
+
+Para publicar em uma VPS (ex: junto com outros apps já rodando via Docker), veja o passo a passo em [`DEPLOY.md`](./DEPLOY.md).
+
 ## Avisos importantes
 
 - Baileys usa um protocolo não-oficial do WhatsApp Web. Existe risco (baixo, mas real) de o número ser temporariamente restringido pelo WhatsApp caso o uso seja excessivo ou pareça automação em massa. Use com moderação e apenas para o próprio número.
