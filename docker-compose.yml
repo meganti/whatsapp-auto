@@ -1,0 +1,9 @@
+services:
+  whatsapp-transcriber:
+    build: .
+    container_name: whatsapp-transcriber
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./auth_info:/app/auth_info
