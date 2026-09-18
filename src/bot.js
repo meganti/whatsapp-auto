@@ -3,12 +3,6 @@ const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  downloadMediaMessage,
-  DisconnectReason,
-} = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const pino = require('pino');
 const OpenAI = require('openai');
@@ -29,16 +23,26 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 let sockInstance = null;
 let isResetting = false;
 
+// Baileys 7.x é publicado como ESM-only; o resto do app continua CommonJS,
+// então carregamos a lib via import() dinâmico uma única vez e guardamos os
+// símbolos em variáveis de módulo.
+let makeWASocket, useMultiFileAuthState, downloadMediaMessage, DisconnectReason;
+let normalizeMessageContent, getContentType;
+
+async function loadBaileys() {
+  if (makeWASocket) return;
+  const baileys = await import('@whiskeysockets/baileys');
+  makeWASocket = baileys.default;
+  ({ useMultiFileAuthState, downloadMediaMessage, DisconnectReason, normalizeMessageContent, getContentType } =
+    baileys);
+}
+
 function extractAudioMessage(message) {
   if (!message?.message) return null;
 
-  const container =
-    message.message.ephemeralMessage?.message ||
-    message.message.viewOnceMessage?.message ||
-    message.message;
-
-  if (container.audioMessage) {
-    return container.audioMessage;
+  const content = normalizeMessageContent(message.message);
+  if (getContentType(content) === 'audioMessage') {
+    return content.audioMessage;
   }
   return null;
 }
@@ -62,12 +66,13 @@ async function transcribeAudioBuffer(buffer, mimeType) {
 }
 
 async function startBot() {
+  await loadBaileys();
+
   const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
   const sock = makeWASocket({
     auth: authState,
     logger,
-    printQRInTerminal: false,
   });
   sockInstance = sock;
 
