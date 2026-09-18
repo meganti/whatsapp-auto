@@ -5,5 +5,16 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      # Rede do projeto "megantipad", onde o Caddy compartilhado já roda.
+      # Sem essa rede o Caddy não alcança este container por nome — e sem
+      # publicar porta nenhuma no host, o painel admin não fica acessível
+      # por IP:porta, só via o domínio configurado no Caddy.
+      - megantipad_default
     volumes:
       - ./auth_info:/app/auth_info
+      - ./data:/app/data
+
+networks:
+  megantipad_default:
+    external: true

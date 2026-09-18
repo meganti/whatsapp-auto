@@ -1,6 +1,6 @@
 # Deploy na VPS
 
-Checklist para publicar o bot na mesma VPS onde o Meganti Pad já roda. Como este bot **não expõe nenhuma porta HTTP** (ele só conecta para fora, ao WhatsApp e à OpenAI), ele não precisa entrar no `docker-compose.yml` do Meganti Pad nem no reverse proxy — roda isolado, na sua própria pasta, sem risco de interferir no que já está no ar.
+Checklist para publicar o bot na mesma VPS onde o Meganti Pad já roda. O bot tem um painel admin web (autenticado) servido em `ADMIN_PORT` (padrão 3000) dentro do container — nenhuma porta é publicada no host; quem expõe pra internet é o Caddy compartilhado do Meganti Pad, via rede Docker interna (`megantipad_default`) e um domínio próprio (`wpp.meganti.com.br`, HTTPS automático via Let's Encrypt). O bot roda isolado, na sua própria pasta (`~/apps/whatsapp-auto`), sem tocar no código do Meganti Pad — só compartilha a rede Docker e uma entrada a mais no `Caddyfile`.
 
 Rode os comandos abaixo direto na VPS (via SSH).
 
@@ -36,28 +36,53 @@ Preencha pelo menos:
 OPENAI_API_KEY=sk-...
 ```
 
-## 4. Primeira execução (escanear o QR code)
+## 4. Conectar a rede do Caddy compartilhado
 
-Precisa ser em primeiro plano na primeira vez, para você ver o QR code no terminal:
+O `docker-compose.yml` referencia a rede externa `megantipad_default` (criada pelo Compose do Meganti Pad) para o Caddy alcançar este container. Ela só existe se o Meganti Pad já estiver no ar; confirme com:
 
 ```bash
-docker compose up --build
+docker network ls | grep megantipad_default
 ```
 
-Abra o WhatsApp no celular em **Configurações > Aparelhos conectados > Conectar um aparelho** e escaneie o QR code que aparece no terminal da VPS.
-
-Depois que aparecer `Conectado ao WhatsApp com sucesso.` no log, pare com `Ctrl+C`. A sessão fica salva em `./auth_info/` (persistida via volume no `docker-compose.yml`), então isso só precisa ser feito uma vez.
-
-## 5. Subir em segundo plano
+## 5. Build e subida
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose logs -f    # Ctrl+C só sai do log, não para o container
 ```
 
-O `docker-compose.yml` já está com `restart: unless-stopped`, então o bot volta a subir automaticamente após reboot da VPS ou crash do processo, contanto que o serviço do Docker esteja habilitado no boot (já deve estar, já que o Meganti Pad depende disso).
+Na primeira vez sem `auth_info/` preenchido, o log mostra `Novo QR code disponível no painel admin.` — o pareamento (QR code ou pairing code) é feito **pelo painel admin web**, não pelo terminal. Veja a seção "Painel admin" abaixo.
 
-## 6. Atualizar depois de mudanças no código
+Logo no primeiro start também aparecem no log as credenciais geradas automaticamente do painel:
+
+```
+Usuário: admin
+Senha:   <gerada aleatoriamente>
+```
+
+Anote a senha — ela só aparece essa vez no log; troque-a pelo próprio painel depois de logar.
+
+O `docker-compose.yml` já está com `restart: unless-stopped`, então o bot volta a subir automaticamente após reboot da VPS ou crash do processo, contanto que o serviço do Docker esteja habilitado no boot (já deve estar, já que o Meganti Pad depende disso). A sessão do WhatsApp fica em `./auth_info/` e as configurações editáveis pelo painel em `./data/` — ambas persistidas via volume, sobrevivem a rebuilds.
+
+## 6. Expor o painel admin (Caddy + HTTPS)
+
+Adicione um bloco ao `Caddyfile` do Meganti Pad (`/root/megantipad/Caddyfile`) apontando para o container pelo nome (mesma rede Docker):
+
+```
+wpp.meganti.com.br {
+	reverse_proxy whatsapp-transcriber:3000
+}
+```
+
+O domínio precisa ter um registro DNS **A** apontando para o IP da VPS antes do reload, senão a emissão do certificado Let's Encrypt falha (ele fica tentando de novo sozinho depois que o DNS propagar). Recarregue o Caddy sem downtime:
+
+```bash
+docker exec megantipad-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+Acesse `https://wpp.meganti.com.br` com o usuário/senha gerados no passo 5.
+
+## 7. Atualizar depois de mudanças no código
 
 ```bash
 cd ~/apps/whatsapp-auto
@@ -70,10 +95,14 @@ docker compose up -d --build
 - [ ] `docker --version` / `docker compose version` funcionam
 - [ ] Repositório clonado em `~/apps/whatsapp-auto`
 - [ ] `.env` preenchido com `OPENAI_API_KEY`
-- [ ] QR code escaneado na primeira execução em foreground
-- [ ] `docker compose up -d` rodando, `docker compose logs -f` mostra "Aguardando áudios..."
+- [ ] Rede `megantipad_default` existe (`docker network ls`)
+- [ ] `docker compose up -d --build` rodando, `docker compose logs -f` mostra "Aguardando áudios..."
+- [ ] Pareamento feito pelo painel admin (QR code / pairing code)
+- [ ] Bloco `wpp.meganti.com.br` adicionado ao `Caddyfile` e recarregado
+- [ ] Login no painel com a senha gerada no log, senha trocada em seguida
 
 ## Segurança
 
 - **Troque a senha de root da VPS.** Se ela foi compartilhada em texto puro em algum chat/ferramenta, considere-a comprometida e troque por uma nova (ou, melhor, migre para autenticação por chave SSH e desative login por senha em `/etc/ssh/sshd_config`).
-- O container não expõe portas — não é necessário liberar nada no firewall para ele.
+- O container não publica nenhuma porta no host — só é alcançável pelo Caddy via rede Docker interna, então não é necessário liberar nada além de 80/443 no firewall (já liberado, pois o Meganti Pad depende disso).
+- O painel admin usa sessão com cookie `httpOnly` + `secure` (via `TRUST_PROXY=true`) e rate limit de 5 tentativas de login por IP a cada 5 min. Ainda assim, troque a senha gerada automaticamente assim que logar pela primeira vez.
