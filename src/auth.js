@@ -3,75 +3,66 @@ const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
-const ENV_PATH = path.join(__dirname, '..', '.env');
+// Fica em data/ (mesmo volume de settings.json), NUNCA em .env — o Docker
+// Compose interpola "$" ao carregar env_file, o que corrompe hashes bcrypt
+// (formato $2a$10$...). Ver histórico do commit que introduziu este arquivo.
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const CREDS_FILE = path.join(DATA_DIR, 'admin-credentials.json');
 
-function upsertEnvFile(key, value) {
-  let content = '';
+function loadCreds() {
   try {
-    content = fs.readFileSync(ENV_PATH, 'utf8');
+    return JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
   } catch {
-    content = '';
-  }
-
-  const regex = new RegExp(`^${key}=.*$`, 'm');
-  if (regex.test(content)) {
-    content = content.replace(regex, `${key}=${value}`);
-  } else {
-    content = content.length && !content.endsWith('\n') ? `${content}\n` : content;
-    content += `${key}=${value}\n`;
-  }
-
-  try {
-    fs.writeFileSync(ENV_PATH, content);
-  } catch (err) {
-    console.error(`Não foi possível gravar ${key} em .env automaticamente:`, err.message);
+    return null;
   }
 }
 
+function saveCreds(creds) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2));
+}
+
+let cachedCreds = null;
+
 function bootstrapAdminCredentials() {
-  let username = process.env.ADMIN_USERNAME;
-  if (!username) {
-    username = 'admin';
-    process.env.ADMIN_USERNAME = username;
-    upsertEnvFile('ADMIN_USERNAME', username);
-  }
-
+  let creds = loadCreds();
   let generatedPassword = null;
-  if (!process.env.ADMIN_PASSWORD_HASH) {
+
+  if (!creds) {
     generatedPassword = crypto.randomBytes(12).toString('base64url');
-    const hash = bcrypt.hashSync(generatedPassword, 10);
-    process.env.ADMIN_PASSWORD_HASH = hash;
-    upsertEnvFile('ADMIN_PASSWORD_HASH', hash);
+    creds = {
+      username: 'admin',
+      passwordHash: bcrypt.hashSync(generatedPassword, 10),
+      sessionSecret: crypto.randomBytes(32).toString('hex'),
+    };
+    saveCreds(creds);
   }
 
-  if (!process.env.SESSION_SECRET) {
-    const secret = crypto.randomBytes(32).toString('hex');
-    process.env.SESSION_SECRET = secret;
-    upsertEnvFile('SESSION_SECRET', secret);
-  }
+  cachedCreds = creds;
+  process.env.ADMIN_USERNAME = creds.username;
+  process.env.SESSION_SECRET = creds.sessionSecret;
 
   if (generatedPassword) {
     console.log('========================================================');
     console.log('Credenciais do painel admin geradas automaticamente:');
-    console.log(`  Usuário: ${username}`);
+    console.log(`  Usuário: ${creds.username}`);
     console.log(`  Senha:   ${generatedPassword}`);
     console.log('Troque a senha em Configurações após o primeiro login.');
     console.log('Ela não será exibida novamente nos logs.');
     console.log('========================================================');
   }
 
-  return { username };
+  return { username: creds.username };
 }
 
 function verifyPassword(password) {
-  if (typeof password !== 'string' || !password) return false;
-  return bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH || '');
+  if (typeof password !== 'string' || !password || !cachedCreds) return false;
+  return bcrypt.compareSync(password, cachedCreds.passwordHash);
 }
 
 function setPassword(newPassword) {
-  const hash = bcrypt.hashSync(newPassword, 10);
-  process.env.ADMIN_PASSWORD_HASH = hash;
-  upsertEnvFile('ADMIN_PASSWORD_HASH', hash);
+  cachedCreds.passwordHash = bcrypt.hashSync(newPassword, 10);
+  saveCreds(cachedCreds);
 }
 
 // Rate limiting simples em memória para tentativas de login por IP.

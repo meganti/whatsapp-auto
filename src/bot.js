@@ -27,6 +27,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 let sockInstance = null;
+let isResetting = false;
 
 function extractAudioMessage(message) {
   if (!message?.message) return null;
@@ -95,9 +96,9 @@ async function startBot() {
       console.log(`Conexão encerrada (código ${statusCode}). Reconectando: ${shouldReconnect}`);
       state.setConnection('close');
       state.pushEvent('connection', `Conexão encerrada (código ${statusCode}).`);
-      if (shouldReconnect) {
+      if (shouldReconnect && !isResetting) {
         startBot();
-      } else {
+      } else if (!isResetting) {
         state.pushEvent(
           'connection',
           'Sessão desconectada. Use "Reconectar" no painel admin para gerar um novo QR code.'
@@ -149,15 +150,30 @@ async function handleMessage(sock, msg) {
 }
 
 async function resetSession() {
-  if (sockInstance) {
-    try {
-      sockInstance.end(undefined);
-    } catch {
-      // ignore
+  isResetting = true;
+  try {
+    if (sockInstance) {
+      try {
+        sockInstance.ev.removeAllListeners();
+        sockInstance.end(undefined);
+      } catch {
+        // ignore
+      }
     }
+
+    // AUTH_DIR é um mount point (volume do Docker) — remover o diretório em
+    // si falha com EBUSY, então só limpamos o conteúdo.
+    const entries = await fs.promises.readdir(AUTH_DIR).catch(() => []);
+    await Promise.all(
+      entries.map((entry) =>
+        fs.promises.rm(path.join(AUTH_DIR, entry), { recursive: true, force: true })
+      )
+    );
+
+    state.pushEvent('connection', 'Sessão apagada pelo painel admin. Gerando novo QR code...');
+  } finally {
+    isResetting = false;
   }
-  await fs.promises.rm(AUTH_DIR, { recursive: true, force: true });
-  state.pushEvent('connection', 'Sessão apagada pelo painel admin. Gerando novo QR code...');
   await startBot();
 }
 
