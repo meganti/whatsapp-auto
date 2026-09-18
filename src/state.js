@@ -10,6 +10,16 @@ class BotState extends EventEmitter {
     this.lastConnectedAt = null;
     this.events = [];
     this.stats = { transcriptions: 0, errors: 0 };
+    this.usage = {
+      today: { date: null, costUsd: 0, seconds: 0, count: 0 },
+      month: { month: null, costUsd: 0, seconds: 0, count: 0 },
+      days: [],
+    };
+  }
+
+  setUsageSummary(summary) {
+    this.usage = summary;
+    this.emit('update');
   }
 
   setConnection(status) {
@@ -42,6 +52,7 @@ class BotState extends EventEmitter {
       qrDataUrl: this.qrDataUrl,
       lastConnectedAt: this.lastConnectedAt,
       stats: this.stats,
+      usage: this.usage,
       events: this.events,
     };
   }

@@ -58,6 +58,26 @@
     </div>
 
     <div class="card">
+      <h2>Custo de transcrição (OpenAI)</h2>
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div id="cost-today" class="value">US$ 0,00</div>
+          <div class="label">Hoje</div>
+        </div>
+        <div class="stat-tile">
+          <div id="cost-month" class="value">US$ 0,00</div>
+          <div class="label" id="cost-month-label">Acumulado no mês</div>
+        </div>
+      </div>
+      <div id="cost-days" class="event-list" style="margin-top:14px">
+        <p class="empty">Nenhuma transcrição neste mês ainda.</p>
+      </div>
+      <p class="status-sub" style="margin-top:10px">
+        Estimativa com base na duração dos áudios e na tarifa por minuto de cada modelo — não é a fatura oficial da OpenAI.
+      </p>
+    </div>
+
+    <div class="card">
       <h2>Configurações de transcrição</h2>
       <form id="settings-form">
         <div class="field">

@@ -44,6 +44,53 @@ function formatTime(iso) {
   }
 }
 
+function formatUsd(value) {
+  const n = Number(value) || 0;
+  const decimals = n >= 1 ? 2 : 4;
+  return 'US$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function formatMonthLabel(monthStr) {
+  if (!monthStr) return 'Acumulado no mês';
+  const [y, m] = monthStr.split('-').map(Number);
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return `Acumulado em ${label}`;
+}
+
+function formatDayLabel(dateStr) {
+  if (!dateStr) return '';
+  const [, m, d] = dateStr.split('-');
+  return `${d}/${m}`;
+}
+
+function renderUsage(usage) {
+  if (!usage) return;
+
+  document.getElementById('cost-today').textContent = formatUsd(usage.today?.costUsd);
+  document.getElementById('cost-month').textContent = formatUsd(usage.month?.costUsd);
+  document.getElementById('cost-month-label').textContent = formatMonthLabel(usage.month?.month);
+
+  const list = document.getElementById('cost-days');
+  if (!usage.days || usage.days.length === 0) {
+    list.innerHTML = '<p class="empty">Nenhuma transcrição neste mês ainda.</p>';
+    return;
+  }
+
+  list.innerHTML = usage.days
+    .map((d) => {
+      const minutes = ((d.seconds || 0) / 60).toFixed(1);
+      return `<div class="event-item">
+        <span class="event-badge settings">${formatDayLabel(d.date)}</span>
+        <div class="event-text">${formatUsd(d.costUsd)}<div class="event-time">${d.count} transcrição(ões) · ${minutes} min de áudio</div></div>
+      </div>`;
+    })
+    .join('');
+}
+
 function renderStatus(data) {
   const [label, cls] = STATUS_LABELS[data.connection] || STATUS_LABELS.connecting;
   document.getElementById('status-dot').className = `status-dot ${cls}`;
@@ -64,6 +111,7 @@ function renderStatus(data) {
   document.getElementById('stat-transcriptions').textContent = data.stats.transcriptions;
   document.getElementById('stat-errors').textContent = data.stats.errors;
 
+  renderUsage(data.usage);
   renderEvents(data.events);
 }
 

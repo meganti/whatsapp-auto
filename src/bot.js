@@ -9,6 +9,7 @@ const OpenAI = require('openai');
 
 const state = require('./state');
 const settings = require('./settings');
+const usage = require('./usage');
 
 const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 
@@ -66,6 +67,8 @@ async function transcribeAudioBuffer(buffer, mimeType) {
 }
 
 async function startBot() {
+  state.setUsageSummary(usage.getSummary());
+
   await loadBaileys();
 
   const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -143,6 +146,14 @@ async function handleMessage(sock, msg) {
   const buffer = await downloadMediaMessage(msg, 'buffer', {});
   const transcription = await transcribeAudioBuffer(buffer, audioMessage.mimetype);
 
+  // A OpenAI cobra pela duração do áudio enviado, não pelo texto retornado —
+  // então registra o custo mesmo se a transcrição vier vazia.
+  const costUsd = usage.recordTranscription({
+    model: current.transcriptionModel,
+    durationSeconds: audioMessage.seconds,
+  });
+  state.setUsageSummary(usage.getSummary());
+
   if (!transcription) {
     console.log('Transcrição vazia, nada a enviar.');
     return;
@@ -151,7 +162,7 @@ async function handleMessage(sock, msg) {
   await sock.sendMessage(chatId, { text: `🎤 *Transcrição:*\n${transcription}` }, { quoted: msg });
 
   console.log(`Transcrição enviada para ${chatId}: ${transcription}`);
-  state.pushEvent('transcription', transcription, { chatId });
+  state.pushEvent('transcription', transcription, { chatId, costUsd });
 }
 
 async function resetSession() {
