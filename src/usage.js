@@ -12,6 +12,10 @@ const PRICE_PER_MINUTE_USD = {
   'gpt-4o-mini-transcribe': 0.003,
 };
 
+// Tarifa por token do gpt-4o-mini (usado para traduzir a transcrição quando
+// o contato é de outro país), em USD por 1M de tokens.
+const TRANSLATION_PRICE_PER_1M_TOKENS = { input: 0.15, output: 0.6 };
+
 function load() {
   try {
     return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8'));
@@ -37,15 +41,30 @@ function estimateCostUsd(model, durationSeconds) {
   return (durationSeconds / 60) * rate;
 }
 
-function recordTranscription({ model, durationSeconds }) {
-  const costUsd = estimateCostUsd(model, durationSeconds);
+function addToToday({ costUsd, seconds = 0, count = 0 }) {
   const key = dayKey(new Date());
   const day = usage[key] || { costUsd: 0, seconds: 0, count: 0 };
   day.costUsd += costUsd;
-  day.seconds += durationSeconds || 0;
-  day.count += 1;
+  day.seconds += seconds;
+  day.count += count;
   usage[key] = day;
   save(usage);
+}
+
+function recordTranscription({ model, durationSeconds }) {
+  const costUsd = estimateCostUsd(model, durationSeconds);
+  addToToday({ costUsd, seconds: durationSeconds || 0, count: 1 });
+  return costUsd;
+}
+
+// Custo da chamada de chat completion (gpt-4o-mini) usada para traduzir a
+// transcrição — somado ao mesmo total diário, mas sem contar como uma
+// "transcrição" (não incrementa seconds/count).
+function recordTranslation({ inputTokens = 0, outputTokens = 0 }) {
+  const costUsd =
+    (inputTokens / 1_000_000) * TRANSLATION_PRICE_PER_1M_TOKENS.input +
+    (outputTokens / 1_000_000) * TRANSLATION_PRICE_PER_1M_TOKENS.output;
+  addToToday({ costUsd });
   return costUsd;
 }
 
@@ -75,4 +94,4 @@ function getSummary() {
   };
 }
 
-module.exports = { recordTranscription, getSummary, PRICE_PER_MINUTE_USD };
+module.exports = { recordTranscription, recordTranslation, getSummary, PRICE_PER_MINUTE_USD };

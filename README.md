@@ -15,6 +15,12 @@ A transcrição é feita pela API de Whisper da OpenAI.
    <texto transcrito>
    ```
 
+   Se o contato for de outro país (detectado pelo código do número), o bot também traduz (via gpt-4o-mini) e manda os dois:
+   - Áudio que você manda pra um contato estrangeiro → transcrição original + tradução no idioma dele.
+   - Áudio que o contato estrangeiro manda pra você → transcrição original + tradução em português.
+
+   Isso depende do WhatsApp expor o número de telefone do contato (`remoteJidAlt`) mesmo quando o chat usa um identificador `@lid` — quando não expõe, o bot só manda a transcrição original, sem tradução.
+
 ## Painel admin
 
 O bot sobe um servidor web (Express) autenticado, com:

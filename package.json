@@ -18,6 +18,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "express-session": "^1.18.1",
+    "libphonenumber-js": "^1.13.13",
     "openai": "^4.68.4",
     "pino": "^9.4.0",
     "qrcode": "^1.5.4"

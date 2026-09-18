@@ -10,6 +10,8 @@ const OpenAI = require('openai');
 const state = require('./state');
 const settings = require('./settings');
 const usage = require('./usage');
+const { resolveContactLanguage } = require('./country-language');
+const { translateText } = require('./translate');
 
 const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 
@@ -48,7 +50,7 @@ function extractAudioMessage(message) {
   return null;
 }
 
-async function transcribeAudioBuffer(buffer, mimeType) {
+async function transcribeAudioBuffer(buffer, mimeType, languageHint) {
   const ext = mimeType?.includes('ogg') ? 'ogg' : 'mp3';
   const tmpFile = path.join(os.tmpdir(), `wa-audio-${crypto.randomUUID()}.${ext}`);
 
@@ -58,7 +60,7 @@ async function transcribeAudioBuffer(buffer, mimeType) {
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: current.transcriptionModel,
-      language: current.transcriptionLanguage || undefined,
+      language: languageHint,
     });
     return response.text.trim();
   } finally {
@@ -143,8 +145,16 @@ async function handleMessage(sock, msg) {
   const chatId = msg.key.remoteJid;
   console.log(`Áudio recebido em ${chatId}. Transcrevendo...`);
 
+  // O contato pode ser de outro país (número fora do Brasil) — nesse caso,
+  // além da transcrição no idioma original, mandamos também uma tradução:
+  // pro idioma dele quando quem falou fui eu, pro português quando foi ele.
+  const contact = resolveContactLanguage(msg.key);
+  const isForeignContact = contact && contact.country !== 'BR';
+  const whisperLanguageHint =
+    !msg.key.fromMe && isForeignContact ? contact.language.code : current.transcriptionLanguage || undefined;
+
   const buffer = await downloadMediaMessage(msg, 'buffer', {});
-  const transcription = await transcribeAudioBuffer(buffer, audioMessage.mimetype);
+  const transcription = await transcribeAudioBuffer(buffer, audioMessage.mimetype, whisperLanguageHint);
 
   // A OpenAI cobra pela duração do áudio enviado, não pelo texto retornado —
   // então registra o custo mesmo se a transcrição vier vazia.
@@ -152,17 +162,41 @@ async function handleMessage(sock, msg) {
     model: current.transcriptionModel,
     durationSeconds: audioMessage.seconds,
   });
-  state.setUsageSummary(usage.getSummary());
 
   if (!transcription) {
+    state.setUsageSummary(usage.getSummary());
     console.log('Transcrição vazia, nada a enviar.');
     return;
   }
 
-  await sock.sendMessage(chatId, { text: `🎤 *Transcrição:*\n${transcription}` }, { quoted: msg });
+  let translation = null;
+  let targetLanguage = null;
+  if (isForeignContact) {
+    targetLanguage = msg.key.fromMe ? contact.language : { code: 'pt', name: 'Português' };
+    try {
+      translation = await translateText(openai, transcription, targetLanguage);
+    } catch (err) {
+      console.error('Erro ao traduzir transcrição:', err);
+      state.pushEvent('error', `Erro ao traduzir transcrição: ${err.message}`);
+    }
+  }
+
+  state.setUsageSummary(usage.getSummary());
+
+  let text = `🎤 *Transcrição:*\n${transcription}`;
+  if (translation) {
+    text += `\n\n🌐 *Tradução (${targetLanguage.name}):*\n${translation}`;
+  }
+
+  await sock.sendMessage(chatId, { text }, { quoted: msg });
 
   console.log(`Transcrição enviada para ${chatId}: ${transcription}`);
-  state.pushEvent('transcription', transcription, { chatId, costUsd });
+  state.pushEvent('transcription', transcription, {
+    chatId,
+    costUsd,
+    translation,
+    targetLanguage: targetLanguage?.name,
+  });
 }
 
 async function resetSession() {
