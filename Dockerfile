@@ -6,11 +6,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY src ./src
-COPY public ./public
 
-# auth_info/ é a sessão do WhatsApp; deve ser montada como volume para persistir
-# entre restarts do container (ver docker-compose.yml ou README.md).
-VOLUME ["/app/auth_info"]
+# auth_info/ é a sessão do WhatsApp; data/ guarda as configurações editadas pelo
+# painel admin. Ambas devem ser montadas como volume (ver docker-compose.yml).
+VOLUME ["/app/auth_info", "/app/data"]
 
 EXPOSE 3000
 

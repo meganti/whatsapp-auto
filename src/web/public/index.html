@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WhatsApp Transcriber — Admin</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="login-view" class="login-wrap" hidden>
+    <form id="login-form" class="login-card">
+      <h1>Painel admin</h1>
+      <p class="subtitle">WhatsApp Audio Transcriber</p>
+      <div class="field">
+        <label for="login-username">Usuário</label>
+        <input type="text" id="login-username" name="username" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="login-password">Senha</label>
+        <input type="password" id="login-password" name="password" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+      <p id="login-msg" class="msg error" hidden></p>
+    </form>
+  </div>
+
+  <div id="dashboard-view" class="wrap" hidden>
+    <div class="topbar">
+      <h1>WhatsApp Transcriber</h1>
+      <button id="logout-btn" class="btn">Sair</button>
+    </div>
+
+    <div class="card">
+      <h2>Status da conexão</h2>
+      <div class="status-row">
+        <span id="status-dot" class="status-dot"></span>
+        <div>
+          <div id="status-label" class="status-label">—</div>
+          <div id="status-sub" class="status-sub"></div>
+        </div>
+      </div>
+
+      <div id="qr-box" class="qr-box" hidden>
+        <img id="qr-image" alt="QR code para conectar o WhatsApp" />
+        <p>Escaneie em Configurações &gt; Aparelhos conectados &gt; Conectar um aparelho.</p>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div id="stat-transcriptions" class="value">0</div>
+          <div class="label">Transcrições</div>
+        </div>
+        <div class="stat-tile">
+          <div id="stat-errors" class="value">0</div>
+          <div class="label">Erros</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Custo de transcrição (OpenAI)</h2>
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div id="cost-today" class="value">US$ 0,00</div>
+          <div class="label">Hoje</div>
+        </div>
+        <div class="stat-tile">
+          <div id="cost-month" class="value">US$ 0,00</div>
+          <div class="label" id="cost-month-label">Acumulado no mês</div>
+        </div>
+      </div>
+      <div id="cost-days" class="event-list" style="margin-top:14px">
+        <p class="empty">Nenhuma transcrição neste mês ainda.</p>
+      </div>
+      <p class="status-sub" style="margin-top:10px">
+        Estimativa com base na duração dos áudios e na tarifa por minuto de cada modelo — não é a fatura oficial da OpenAI.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Configurações de transcrição</h2>
+      <form id="settings-form">
+        <div class="field">
+          <label for="setting-model">Modelo</label>
+          <select id="setting-model" name="transcriptionModel">
+            <option value="whisper-1">whisper-1</option>
+            <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
+            <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="setting-language">Idioma (ISO-639-1, ex: pt) — deixe em branco para detecção automática</label>
+          <input type="text" id="setting-language" name="transcriptionLanguage" maxlength="2" placeholder="pt" />
+        </div>
+        <div class="field toggle-row">
+          <div>
+            <label for="setting-only-own" style="margin-bottom:0">Restringir aos meus próprios áudios</label>
+            <div class="desc">Desativado (padrão): transcreve áudio de qualquer conversa, seu ou de quem te mandar. Ativado: ignora áudios enviados por outras pessoas, só transcreve os que você mesmo envia.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-only-own" name="onlyTranscribeOwnAudios" />
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+        <p id="settings-msg" class="msg" hidden></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Atividade recente</h2>
+      <div id="event-list" class="event-list">
+        <p class="empty">Nenhuma atividade ainda.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Segurança</h2>
+      <form id="password-form">
+        <div class="field">
+          <label for="pw-current">Senha atual</label>
+          <input type="password" id="pw-current" name="currentPassword" autocomplete="current-password" required />
+        </div>
+        <div class="field">
+          <label for="pw-new">Nova senha (mín. 10 caracteres)</label>
+          <input type="password" id="pw-new" name="newPassword" autocomplete="new-password" minlength="10" required />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn">Alterar senha</button>
+        </div>
+        <p id="password-msg" class="msg" hidden></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Zona de risco</h2>
+      <p class="status-sub" style="margin-bottom:12px">
+        Apaga a sessão atual do WhatsApp e gera um novo QR code. Use se o bot ficou preso desconectado.
+      </p>
+      <button id="reset-session-btn" class="btn btn-danger">Desconectar sessão do WhatsApp</button>
+      <p id="reset-msg" class="msg" hidden></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
