@@ -12,6 +12,7 @@ const settings = require('./settings');
 const usage = require('./usage');
 const { resolveContactLanguage } = require('./country-language');
 const { translateText } = require('./translate');
+const { summarizeText, SUMMARY_MIN_DURATION_SECONDS } = require('./summarize');
 
 const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 
@@ -169,6 +170,17 @@ async function handleMessage(sock, msg) {
     return;
   }
 
+  // Áudios longos ganham um resumo em tópicos no topo da mensagem.
+  let summary = null;
+  if ((audioMessage.seconds || 0) > SUMMARY_MIN_DURATION_SECONDS) {
+    try {
+      summary = await summarizeText(openai, transcription);
+    } catch (err) {
+      console.error('Erro ao resumir transcrição:', err);
+      state.pushEvent('error', `Erro ao resumir transcrição: ${err.message}`);
+    }
+  }
+
   let translation = null;
   let targetLanguage = null;
   if (isForeignContact) {
@@ -183,7 +195,11 @@ async function handleMessage(sock, msg) {
 
   state.setUsageSummary(usage.getSummary());
 
-  let text = `🎤 *Transcrição:*\n${transcription}`;
+  let text = '';
+  if (summary) {
+    text += `📝 *Resumo:*\n${summary}\n\n`;
+  }
+  text += `🎤 *Transcrição:*\n${transcription}`;
   if (translation) {
     text += `\n\n🌐 *Tradução (${targetLanguage.name}):*\n${translation}`;
   }
@@ -194,6 +210,7 @@ async function handleMessage(sock, msg) {
   state.pushEvent('transcription', transcription, {
     chatId,
     costUsd,
+    summary,
     translation,
     targetLanguage: targetLanguage?.name,
   });

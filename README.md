@@ -15,6 +15,17 @@ A transcrição é feita pela API de Whisper da OpenAI.
    <texto transcrito>
    ```
 
+   Se o áudio tiver mais de 2 minutos, o bot coloca antes da transcrição um resumo da conversa em tópicos (via gpt-4o-mini):
+
+   ```
+   📝 Resumo:
+   • <ponto principal 1>
+   • <ponto principal 2>
+
+   🎤 Transcrição:
+   <texto transcrito>
+   ```
+
    Se o contato for de outro país (detectado pelo código do número), o bot também traduz (via gpt-4o-mini) e manda os dois:
    - Áudio que você manda pra um contato estrangeiro → transcrição original + tradução no idioma dele.
    - Áudio que o contato estrangeiro manda pra você → transcrição original + tradução em português.

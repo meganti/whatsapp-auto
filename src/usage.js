@@ -57,8 +57,8 @@ function recordTranscription({ model, durationSeconds }) {
   return costUsd;
 }
 
-// Custo da chamada de chat completion (gpt-4o-mini) usada para traduzir a
-// transcrição — somado ao mesmo total diário, mas sem contar como uma
+// Custo da chamada de chat completion (gpt-4o-mini) usada para traduzir ou
+// resumir a transcrição — somado ao mesmo total diário, mas sem contar como uma
 // "transcrição" (não incrementa seconds/count).
 function recordTranslation({ inputTokens = 0, outputTokens = 0 }) {
   const costUsd =
