@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transcritor de Áudios do WhatsApp</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>🎤 Transcritor de Áudios do WhatsApp</h1>
+      <div id="status" class="status status--connecting">Verificando conexão...</div>
+    </header>
+
+    <section id="qr-section" class="card" hidden>
+      <h2>Escaneie o QR code</h2>
+      <p>WhatsApp no celular &gt; Configurações &gt; Aparelhos conectados &gt; Conectar um aparelho</p>
+      <img id="qr-image" alt="QR code para conectar o WhatsApp" />
+    </section>
+
+    <section class="card">
+      <h2>Últimas transcrições</h2>
+      <ul id="transcriptions-list" class="transcriptions"></ul>
+      <p id="empty-state" class="empty-state">Nenhuma transcrição ainda.</p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

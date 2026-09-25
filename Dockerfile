@@ -6,9 +6,12 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY src ./src
+COPY public ./public
 
 # auth_info/ é a sessão do WhatsApp; deve ser montada como volume para persistir
 # entre restarts do container (ver docker-compose.yml ou README.md).
 VOLUME ["/app/auth_info"]
+
+EXPOSE 3000
 
 CMD ["node", "src/index.js"]

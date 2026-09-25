@@ -15,6 +15,9 @@ const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const OpenAI = require('openai');
 
+const state = require('./state');
+const { startWebServer } = require('./web');
+
 const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 const TRANSCRIPTION_MODEL = process.env.TRANSCRIPTION_MODEL || 'whisper-1';
 const TRANSCRIPTION_LANGUAGE = process.env.TRANSCRIPTION_LANGUAGE || undefined;
@@ -75,16 +78,19 @@ async function startBot() {
     if (qr) {
       console.log('\nEscaneie o QR code abaixo com o WhatsApp (Aparelhos conectados > Conectar aparelho):\n');
       qrcode.generate(qr, { small: true });
+      state.setWaitingQr(qr);
     }
 
     if (connection === 'open') {
       console.log('Conectado ao WhatsApp com sucesso. Aguardando áudios...');
+      state.setConnected();
     }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       console.log(`Conexão encerrada (código ${statusCode}). Reconectando: ${shouldReconnect}`);
+      state.setDisconnected();
       if (shouldReconnect) {
         startBot();
       } else {
@@ -133,8 +139,11 @@ async function handleMessage(sock, msg) {
     { quoted: msg }
   );
 
+  state.addTranscription({ chatId, chatName: msg.pushName, text: transcription });
   console.log(`Transcrição enviada para ${chatId}: ${transcription}`);
 }
+
+startWebServer();
 
 startBot().catch((err) => {
   console.error('Falha ao iniciar o bot:', err);

@@ -15,6 +15,8 @@ A transcrição é feita pela API de Whisper da OpenAI.
    <texto transcrito>
    ```
 
+4. Uma interface web (porta `3000` por padrão) mostra o status da conexão, o QR code (quando precisar parear) e o histórico das últimas transcrições — ver [Interface web](#interface-web) abaixo.
+
 ## Pré-requisitos
 
 - Node.js 18 ou superior
@@ -39,9 +41,21 @@ OPENAI_API_KEY=sk-...
 npm start
 ```
 
-Um QR code vai aparecer no terminal. Abra o WhatsApp no seu celular em **Configurações > Aparelhos conectados > Conectar um aparelho** e escaneie o código.
+Um QR code vai aparecer no terminal (e também na interface web, em `http://localhost:3000`). Abra o WhatsApp no seu celular em **Configurações > Aparelhos conectados > Conectar um aparelho** e escaneie o código.
 
 Após conectar, o bot ficará rodando e transcrevendo automaticamente os áudios recebidos. A sessão é salva na pasta `auth_info/` (ignorada pelo git), então não é necessário escanear o QR code novamente nas próximas execuções, a menos que a sessão seja desconectada.
+
+## Interface web
+
+Ao iniciar, o bot sobe um pequeno servidor web (porta `3000` por padrão, configurável via `WEB_PORT`) com uma única página mostrando:
+
+- Status da conexão (conectando / aguardando QR / conectado / desconectado)
+- O QR code para parear, renderizado como imagem (sem precisar olhar o terminal)
+- As últimas transcrições feitas (contato, horário e texto)
+
+Acesse em `http://<host>:3000` (`http://localhost:3000` local, ou o IP/domínio da VPS em produção).
+
+Se a porta ficar acessível publicamente (ex: exposta numa VPS), configure `WEB_USERNAME` e `WEB_PASSWORD` no `.env` para proteger a página com HTTP Basic Auth — sem isso, qualquer pessoa que acesse a URL vê o QR code (podendo sequestrar o pareamento) e o histórico de transcrições.
 
 ## Configuração (`.env`)
 
@@ -51,6 +65,8 @@ Após conectar, o bot ficará rodando e transcrevendo automaticamente os áudios
 | `TRANSCRIPTION_MODEL` | Modelo de transcrição (`whisper-1` ou `gpt-4o-transcribe`) | `whisper-1` |
 | `TRANSCRIPTION_LANGUAGE` | Idioma dos áudios em ISO-639-1 (ex: `pt`). Deixe vazio para detecção automática | `pt` |
 | `ONLY_TRANSCRIBE_OWN_AUDIOS` | Se `true`, só transcreve áudios enviados por você mesmo (`fromMe`). Se `false`, transcreve de qualquer conversa | `false` |
+| `WEB_PORT` | Porta da interface web | `3000` |
+| `WEB_USERNAME` / `WEB_PASSWORD` | Credenciais de HTTP Basic Auth da interface web. Deixe em branco para desativar (não recomendado em produção) | — |
 
 ## Rodando com PM2 (processo persistente em servidor)
 
@@ -110,6 +126,7 @@ Sem Docker Compose:
 docker build -t whatsapp-transcriber .
 docker run -it --name whatsapp-transcriber \
   --env-file .env \
+  -p 3000:3000 \
   -v "$(pwd)/auth_info:/app/auth_info" \
   whatsapp-transcriber
 ```
