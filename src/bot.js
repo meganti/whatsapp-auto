@@ -40,6 +40,10 @@ async function loadBaileys() {
     baileys);
 }
 
+function isIndividualChat(chatId) {
+  return typeof chatId === 'string' && (chatId.endsWith('@s.whatsapp.net') || chatId.endsWith('@lid'));
+}
+
 function extractAudioMessage(message) {
   if (!message?.message) return null;
 
@@ -136,13 +140,15 @@ async function startBot() {
 async function handleMessage(sock, msg) {
   if (!msg.message) return;
 
+  const chatId = msg.key.remoteJid;
+  if (!isIndividualChat(chatId)) return;
+
   const audioMessage = extractAudioMessage(msg);
   if (!audioMessage) return;
 
   const current = settings.get();
   if (current.onlyTranscribeOwnAudios && !msg.key.fromMe) return;
 
-  const chatId = msg.key.remoteJid;
   console.log(`Áudio recebido em ${chatId}. Transcrevendo...`);
 
   // O contato pode ser de outro país (número fora do Brasil) — nesse caso,

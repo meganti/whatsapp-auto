@@ -7,7 +7,7 @@ A transcrição é feita pela API de Whisper da OpenAI.
 ## Como funciona
 
 1. O bot se conecta ao seu número de WhatsApp através de um QR code ou pairing code, exatamente como o WhatsApp Web — o pareamento é feito pelo **painel admin web** (veja abaixo), não mais pelo terminal.
-2. Sempre que chegar um áudio (mensagem de voz ou arquivo de áudio) em qualquer conversa ou grupo, o bot baixa o áudio, envia para a API da OpenAI e recebe o texto transcrito.
+2. Sempre que chegar um áudio (mensagem de voz ou arquivo de áudio) numa conversa individual, o bot baixa o áudio, envia para a API da OpenAI e recebe o texto transcrito. Áudios em grupos, listas de transmissão, status e canais nunca são transcritos.
 3. O bot responde no mesmo chat, citando a mensagem original, com o texto:
 
    ```
