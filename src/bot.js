@@ -6,14 +6,13 @@ const crypto = require('crypto');
 const qrcode = require('qrcode');
 const pino = require('pino');
 const OpenAI = require('openai');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
-const state = require('./state');
+const connections = require('./connections');
 const settings = require('./settings');
 const usage = require('./usage');
-const { resolveContactLanguage } = require('./country-language');
+const { resolveContactLanguage, extractPhoneNumberJid } = require('./country-language');
 const { translateText } = require('./translate');
-
-const AUTH_DIR = path.join(__dirname, '..', 'auth_info');
 
 if (!process.env.OPENAI_API_KEY) {
   console.error('Erro: defina OPENAI_API_KEY no arquivo .env antes de iniciar o bot.');
@@ -23,8 +22,10 @@ if (!process.env.OPENAI_API_KEY) {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
-let sockInstance = null;
-let isResetting = false;
+// Números (dígitos, sem @s.whatsapp.net) atualmente conectados na Uhura,
+// mapeados pro id da conexão dona — usado pra evitar transcrição duplicada
+// quando dois números conectados conversam entre si (veja handleMessage).
+const connectedNumbers = new Map();
 
 // Baileys 7.x é publicado como ESM-only; o resto do app continua CommonJS,
 // então carregamos a lib via import() dinâmico uma única vez e guardamos os
@@ -40,8 +41,19 @@ async function loadBaileys() {
     baileys);
 }
 
+function jidDigits(jid) {
+  return jid ? jid.split('@')[0].split(':')[0] : null;
+}
+
 function isIndividualChat(chatId) {
   return typeof chatId === 'string' && (chatId.endsWith('@s.whatsapp.net') || chatId.endsWith('@lid'));
+}
+
+function formatConnectedNumber(sock) {
+  const digits = jidDigits(sock?.user?.id);
+  if (!digits) return null;
+  const parsed = parsePhoneNumberFromString(`+${digits}`);
+  return parsed ? parsed.formatInternational() : `+${digits}`;
 }
 
 function extractAudioMessage(message) {
@@ -54,16 +66,15 @@ function extractAudioMessage(message) {
   return null;
 }
 
-async function transcribeAudioBuffer(buffer, mimeType, languageHint) {
+async function transcribeAudioBuffer(buffer, mimeType, model, languageHint) {
   const ext = mimeType?.includes('ogg') ? 'ogg' : 'mp3';
   const tmpFile = path.join(os.tmpdir(), `wa-audio-${crypto.randomUUID()}.${ext}`);
 
   await fs.promises.writeFile(tmpFile, buffer);
   try {
-    const current = settings.get();
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
-      model: current.transcriptionModel,
+      model,
       language: languageHint,
     });
     return response.text.trim();
@@ -72,50 +83,76 @@ async function transcribeAudioBuffer(buffer, mimeType, languageHint) {
   }
 }
 
-async function startBot() {
-  state.setUsageSummary(usage.getSummary());
+// `auth_info/` (a raiz) é um mount point (volume do Docker) — remover o
+// diretório em si falha com EBUSY, então pra conexão "default" só limpamos o
+// conteúdo. Pra qualquer outra conexão, o diretório é uma subpasta comum e
+// pode ser removido inteiro.
+async function wipeAuthDir(id) {
+  const dir = connections.getAuthDir(id);
+  if (id === 'default') {
+    const entries = await fs.promises.readdir(dir).catch(() => []);
+    await Promise.all(entries.map((entry) => fs.promises.rm(path.join(dir, entry), { recursive: true, force: true })));
+  } else {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function startBot(id) {
+  const record = connections.getConnection(id);
+  if (!record) throw new Error(`Conexão desconhecida: ${id}`);
+  const { state } = record;
+
+  state.setUsageSummary(usage.getSummary(id));
 
   await loadBaileys();
 
-  const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const authDir = connections.getAuthDir(id);
+  const { state: authState, saveCreds } = await useMultiFileAuthState(authDir);
 
   const sock = makeWASocket({
     auth: authState,
     logger,
   });
-  sockInstance = sock;
+  record.sock = sock;
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('Novo QR code disponível no painel admin.');
+      console.log(`[${record.label}] Novo QR code disponível no painel admin.`);
       try {
         const dataUrl = await qrcode.toDataURL(qr, { margin: 1, scale: 6 });
         state.setQr(dataUrl);
       } catch (err) {
-        console.error('Erro ao gerar imagem do QR code:', err);
+        console.error(`[${record.label}] Erro ao gerar imagem do QR code:`, err);
       }
     }
 
     if (connection === 'open') {
-      console.log('Conectado ao WhatsApp com sucesso. Aguardando áudios...');
+      console.log(`[${record.label}] Conectado ao WhatsApp com sucesso. Aguardando áudios...`);
       state.setConnection('open');
+      state.setPhoneNumber(formatConnectedNumber(sock));
+      const digits = jidDigits(sock.user?.id);
+      if (digits) connectedNumbers.set(digits, id);
       state.pushEvent('connection', 'Conectado ao WhatsApp.');
     }
 
     if (connection === 'close') {
+      for (const [digits, ownerId] of connectedNumbers) {
+        if (ownerId === id) connectedNumbers.delete(digits);
+      }
+
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`Conexão encerrada (código ${statusCode}). Reconectando: ${shouldReconnect}`);
+      console.log(`[${record.label}] Conexão encerrada (código ${statusCode}). Reconectando: ${shouldReconnect}`);
       state.setConnection('close');
       state.pushEvent('connection', `Conexão encerrada (código ${statusCode}).`);
-      if (shouldReconnect && !isResetting) {
-        startBot();
-      } else if (!isResetting) {
+      if (shouldReconnect && !record.isResetting) {
+        startBot(id);
+      } else if (!record.isResetting) {
         state.pushEvent(
           'connection',
-          'Sessão desconectada. Use "Reconectar" no painel admin para gerar um novo QR code.'
+          'Sessão desconectada. Use "Resetar sessão" no painel admin para gerar um novo QR code.'
         );
       }
     }
@@ -128,16 +165,16 @@ async function startBot() {
 
     for (const msg of messages) {
       try {
-        await handleMessage(sock, msg);
+        await handleMessage(sock, msg, id);
       } catch (err) {
-        console.error('Erro ao processar mensagem:', err);
+        console.error(`[${record.label}] Erro ao processar mensagem:`, err);
         state.pushEvent('error', `Erro ao processar mensagem: ${err.message}`);
       }
     }
   });
 }
 
-async function handleMessage(sock, msg) {
+async function handleMessage(sock, msg, id) {
   if (!msg.message) return;
 
   const chatId = msg.key.remoteJid;
@@ -146,10 +183,25 @@ async function handleMessage(sock, msg) {
   const audioMessage = extractAudioMessage(msg);
   if (!audioMessage) return;
 
-  const current = settings.get();
+  // Se este número mandou o áudio (fromMe) e quem recebeu também é um
+  // número conectado na Uhura, deixa a transcrição a cargo do lado que
+  // RECEBEU — senão as duas conexões responderiam na mesma conversa com
+  // duas transcrições do mesmo áudio. Só se aplica a conversas 1:1
+  // (extractPhoneNumberJid retorna null pra grupos).
+  if (msg.key.fromMe) {
+    const counterpartyJid = extractPhoneNumberJid(msg.key);
+    const digits = jidDigits(counterpartyJid);
+    const ownerId = digits && connectedNumbers.get(digits);
+    if (ownerId && ownerId !== id) return;
+  }
+
+  const record = connections.getConnection(id);
+  const { state } = record;
+
+  const current = settings.get(id);
   if (current.onlyTranscribeOwnAudios && !msg.key.fromMe) return;
 
-  console.log(`Áudio recebido em ${chatId}. Transcrevendo...`);
+  console.log(`[${record.label}] Áudio recebido em ${chatId}. Transcrevendo...`);
 
   // O contato pode ser de outro país (número fora do Brasil) — nesse caso,
   // além da transcrição no idioma original, mandamos também uma tradução:
@@ -160,18 +212,23 @@ async function handleMessage(sock, msg) {
     !msg.key.fromMe && isForeignContact ? contact.language.code : current.transcriptionLanguage || undefined;
 
   const buffer = await downloadMediaMessage(msg, 'buffer', {});
-  const transcription = await transcribeAudioBuffer(buffer, audioMessage.mimetype, whisperLanguageHint);
+  const transcription = await transcribeAudioBuffer(
+    buffer,
+    audioMessage.mimetype,
+    current.transcriptionModel,
+    whisperLanguageHint
+  );
 
   // A OpenAI cobra pela duração do áudio enviado, não pelo texto retornado —
   // então registra o custo mesmo se a transcrição vier vazia.
-  const costUsd = usage.recordTranscription({
+  const costUsd = usage.recordTranscription(id, {
     model: current.transcriptionModel,
     durationSeconds: audioMessage.seconds,
   });
 
   if (!transcription) {
-    state.setUsageSummary(usage.getSummary());
-    console.log('Transcrição vazia, nada a enviar.');
+    state.setUsageSummary(usage.getSummary(id));
+    console.log(`[${record.label}] Transcrição vazia, nada a enviar.`);
     return;
   }
 
@@ -180,14 +237,14 @@ async function handleMessage(sock, msg) {
   if (isForeignContact) {
     targetLanguage = msg.key.fromMe ? contact.language : { code: 'pt', name: 'Português' };
     try {
-      translation = await translateText(openai, transcription, targetLanguage);
+      translation = await translateText(openai, transcription, targetLanguage, id);
     } catch (err) {
-      console.error('Erro ao traduzir transcrição:', err);
+      console.error(`[${record.label}] Erro ao traduzir transcrição:`, err);
       state.pushEvent('error', `Erro ao traduzir transcrição: ${err.message}`);
     }
   }
 
-  state.setUsageSummary(usage.getSummary());
+  state.setUsageSummary(usage.getSummary(id));
 
   let text = `🎤 *Transcrição:*\n${transcription}`;
   if (translation) {
@@ -196,7 +253,7 @@ async function handleMessage(sock, msg) {
 
   await sock.sendMessage(chatId, { text }, { quoted: msg });
 
-  console.log(`Transcrição enviada para ${chatId}: ${transcription}`);
+  console.log(`[${record.label}] Transcrição enviada para ${chatId}: ${transcription}`);
   state.pushEvent('transcription', transcription, {
     chatId,
     costUsd,
@@ -205,32 +262,50 @@ async function handleMessage(sock, msg) {
   });
 }
 
-async function resetSession() {
-  isResetting = true;
+async function resetSession(id) {
+  const record = connections.getConnection(id);
+  if (!record) throw new Error(`Conexão desconhecida: ${id}`);
+
+  record.isResetting = true;
   try {
-    if (sockInstance) {
+    if (record.sock) {
       try {
-        sockInstance.ev.removeAllListeners();
-        sockInstance.end(undefined);
+        record.sock.ev.removeAllListeners();
+        record.sock.end(undefined);
       } catch {
         // ignore
       }
     }
 
-    // AUTH_DIR é um mount point (volume do Docker) — remover o diretório em
-    // si falha com EBUSY, então só limpamos o conteúdo.
-    const entries = await fs.promises.readdir(AUTH_DIR).catch(() => []);
-    await Promise.all(
-      entries.map((entry) =>
-        fs.promises.rm(path.join(AUTH_DIR, entry), { recursive: true, force: true })
-      )
-    );
-
-    state.pushEvent('connection', 'Sessão apagada pelo painel admin. Gerando novo QR code...');
+    await wipeAuthDir(id);
+    record.state.pushEvent('connection', 'Sessão apagada pelo painel admin. Gerando novo QR code...');
   } finally {
-    isResetting = false;
+    record.isResetting = false;
   }
-  await startBot();
+  await startBot(id);
 }
 
-module.exports = { startBot, resetSession };
+async function removeConnection(id) {
+  const record = connections.getConnection(id);
+  if (!record) return;
+
+  record.isResetting = true;
+  if (record.sock) {
+    try {
+      record.sock.ev.removeAllListeners();
+      record.sock.end(undefined);
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const [digits, ownerId] of connectedNumbers) {
+    if (ownerId === id) connectedNumbers.delete(digits);
+  }
+
+  await wipeAuthDir(id);
+  settings.remove(id);
+  connections.removeConnection(id);
+}
+
+module.exports = { startBot, resetSession, removeConnection };

@@ -16,7 +16,9 @@ const PRICE_PER_MINUTE_USD = {
 // o contato é de outro país), em USD por 1M de tokens.
 const TRANSLATION_PRICE_PER_1M_TOKENS = { input: 0.15, output: 0.6 };
 
-function load() {
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function readFile() {
   try {
     return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8'));
   } catch {
@@ -24,12 +26,28 @@ function load() {
   }
 }
 
-function save(data) {
+function writeFile(data) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(USAGE_FILE, JSON.stringify(data, null, 2));
 }
 
-let usage = load();
+// Formato antigo (pré multi-número) era { "<YYYY-MM-DD>": {...} } direto na
+// raiz. Formato novo é { [connectionId]: { "<YYYY-MM-DD>": {...} } }.
+function isLegacyShape(raw) {
+  return raw && typeof raw === 'object' && Object.keys(raw).some((k) => DAY_KEY_RE.test(k));
+}
+
+let store = readFile();
+if (isLegacyShape(store)) {
+  store = { __legacy__: store };
+}
+
+function migrateLegacyToId(id) {
+  if (!store.__legacy__) return;
+  const legacy = store.__legacy__;
+  store = { [id]: legacy };
+  writeFile(store);
+}
 
 function dayKey(date) {
   return date.toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
@@ -41,34 +59,36 @@ function estimateCostUsd(model, durationSeconds) {
   return (durationSeconds / 60) * rate;
 }
 
-function addToToday({ costUsd, seconds = 0, count = 0 }) {
+function addToToday(id, { costUsd, seconds = 0, count = 0 }) {
+  const usage = store[id] || {};
   const key = dayKey(new Date());
   const day = usage[key] || { costUsd: 0, seconds: 0, count: 0 };
   day.costUsd += costUsd;
   day.seconds += seconds;
   day.count += count;
   usage[key] = day;
-  save(usage);
+  store[id] = usage;
+  writeFile(store);
 }
 
-function recordTranscription({ model, durationSeconds }) {
+function recordTranscription(id, { model, durationSeconds }) {
   const costUsd = estimateCostUsd(model, durationSeconds);
-  addToToday({ costUsd, seconds: durationSeconds || 0, count: 1 });
+  addToToday(id, { costUsd, seconds: durationSeconds || 0, count: 1 });
   return costUsd;
 }
 
 // Custo da chamada de chat completion (gpt-4o-mini) usada para traduzir a
 // transcrição — somado ao mesmo total diário, mas sem contar como uma
 // "transcrição" (não incrementa seconds/count).
-function recordTranslation({ inputTokens = 0, outputTokens = 0 }) {
+function recordTranslation(id, { inputTokens = 0, outputTokens = 0 }) {
   const costUsd =
     (inputTokens / 1_000_000) * TRANSLATION_PRICE_PER_1M_TOKENS.input +
     (outputTokens / 1_000_000) * TRANSLATION_PRICE_PER_1M_TOKENS.output;
-  addToToday({ costUsd });
+  addToToday(id, { costUsd });
   return costUsd;
 }
 
-function getSummary() {
+function summarize(usage) {
   const now = new Date();
   const todayK = dayKey(now);
   const monthPrefix = todayK.slice(0, 7); // YYYY-MM
@@ -94,4 +114,30 @@ function getSummary() {
   };
 }
 
-module.exports = { recordTranscription, recordTranslation, getSummary, PRICE_PER_MINUTE_USD };
+function getSummary(id) {
+  return summarize(store[id] || {});
+}
+
+// Soma o uso de todas as conexões, dia a dia, pro card de custo combinado.
+function getAggregateSummary() {
+  const combined = {};
+  for (const usage of Object.values(store)) {
+    for (const [key, entry] of Object.entries(usage)) {
+      const day = combined[key] || { costUsd: 0, seconds: 0, count: 0 };
+      day.costUsd += entry.costUsd;
+      day.seconds += entry.seconds;
+      day.count += entry.count;
+      combined[key] = day;
+    }
+  }
+  return summarize(combined);
+}
+
+module.exports = {
+  recordTranscription,
+  recordTranslation,
+  getSummary,
+  getAggregateSummary,
+  migrateLegacyToId,
+  PRICE_PER_MINUTE_USD,
+};

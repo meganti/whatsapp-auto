@@ -2,8 +2,9 @@ const path = require('path');
 const express = require('express');
 const session = require('express-session');
 
-const state = require('../state');
+const connections = require('../connections');
 const settings = require('../settings');
+const usage = require('../usage');
 const auth = require('../auth');
 const bot = require('../bot');
 
@@ -72,22 +73,52 @@ function createServer() {
     });
   });
 
-  app.get('/api/status', requireAuth, (req, res) => {
-    res.json(state.toJSON());
+  app.get('/api/connections', requireAuth, (req, res) => {
+    res.json(
+      connections.listConnections().map(({ id, label, state }) => ({
+        id,
+        label,
+        ...state.toJSON(),
+        settings: settings.get(id),
+      }))
+    );
   });
 
-  app.get('/api/settings', requireAuth, (req, res) => {
-    res.json(settings.get());
+  app.post('/api/connections', requireAuth, (req, res) => {
+    const { label } = req.body || {};
+    const record = connections.addConnection(label);
+    res.json({ id: record.id, label: record.label });
+    bot.startBot(record.id).catch((err) => console.error(`Erro ao iniciar conexão ${record.id}:`, err));
   });
 
-  app.post('/api/settings', requireAuth, (req, res) => {
+  app.delete('/api/connections/:id', requireAuth, (req, res) => {
+    res.json({ ok: true });
+    bot.removeConnection(req.params.id).catch((err) => console.error(`Erro ao remover conexão ${req.params.id}:`, err));
+  });
+
+  app.post('/api/connections/:id/reset', requireAuth, (req, res) => {
+    res.json({ ok: true });
+    bot.resetSession(req.params.id).catch((err) => console.error(`Erro ao resetar conexão ${req.params.id}:`, err));
+  });
+
+  app.post('/api/connections/:id/settings', requireAuth, (req, res) => {
+    const record = connections.getConnection(req.params.id);
+    if (!record) return res.status(404).json({ error: 'Conexão não encontrada.' });
     try {
-      const updated = settings.update(req.body || {});
-      state.pushEvent('settings', 'Configurações atualizadas pelo painel admin.');
+      const updated = settings.update(req.params.id, req.body || {});
+      record.state.pushEvent('settings', 'Configurações atualizadas pelo painel admin.');
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  app.get('/api/usage', requireAuth, (req, res) => {
+    const byConnection = {};
+    for (const { id } of connections.listConnections()) {
+      byConnection[id] = usage.getSummary(id);
+    }
+    res.json({ total: usage.getAggregateSummary(), byConnection });
   });
 
   app.post('/api/change-password', requireAuth, (req, res) => {
@@ -99,13 +130,8 @@ function createServer() {
       return res.status(400).json({ error: 'A nova senha deve ter pelo menos 10 caracteres.' });
     }
     auth.setPassword(newPassword);
-    state.pushEvent('settings', 'Senha do painel admin foi alterada.');
+    console.log('Senha do painel admin foi alterada.');
     res.json({ ok: true });
-  });
-
-  app.post('/api/reset-session', requireAuth, (req, res) => {
-    res.json({ ok: true });
-    bot.resetSession().catch((err) => console.error('Erro ao resetar sessão:', err));
   });
 
   app.use(express.static(path.join(__dirname, 'public')));

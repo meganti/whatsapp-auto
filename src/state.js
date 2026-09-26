@@ -8,6 +8,7 @@ class BotState extends EventEmitter {
     this.connection = 'connecting'; // 'connecting' | 'open' | 'close' | 'qr'
     this.qrDataUrl = null;
     this.lastConnectedAt = null;
+    this.phoneNumber = null;
     this.events = [];
     this.stats = { transcriptions: 0, errors: 0 };
     this.usage = {
@@ -34,6 +35,12 @@ class BotState extends EventEmitter {
   setQr(dataUrl) {
     this.qrDataUrl = dataUrl;
     this.connection = 'qr';
+    this.phoneNumber = null;
+    this.emit('update');
+  }
+
+  setPhoneNumber(phoneNumber) {
+    this.phoneNumber = phoneNumber;
     this.emit('update');
   }
 
@@ -51,6 +58,7 @@ class BotState extends EventEmitter {
       connection: this.connection,
       qrDataUrl: this.qrDataUrl,
       lastConnectedAt: this.lastConnectedAt,
+      phoneNumber: this.phoneNumber,
       stats: this.stats,
       usage: this.usage,
       events: this.events,
@@ -58,4 +66,4 @@ class BotState extends EventEmitter {
   }
 }
 
-module.exports = new BotState();
+module.exports = BotState;

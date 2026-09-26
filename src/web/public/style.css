@@ -137,6 +137,29 @@ body {
   gap: 10px;
 }
 
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connection-card .status-row {
+  justify-content: space-between;
+}
+
+.connection-card .connection-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.connection-card hr {
+  border: none;
+  border-top: 1px solid var(--gridline);
+  margin: 16px 0;
+}
+
 .status-dot {
   width: 10px;
   height: 10px;

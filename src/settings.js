@@ -14,28 +14,45 @@ const DEFAULTS = {
   onlyTranscribeOwnAudios: process.env.ONLY_TRANSCRIBE_OWN_AUDIOS === 'true',
 };
 
-function load() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULTS, null, 2));
-    return { ...DEFAULTS };
-  }
+function readFile() {
   try {
-    const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    return { ...DEFAULTS, ...raw };
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
   } catch {
-    return { ...DEFAULTS };
+    return {};
   }
 }
 
-let current = load();
-
-function get() {
-  return { ...current };
+function writeFile(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
 }
 
-function update(patch) {
-  const next = { ...current };
+// Formato antigo (pré multi-número) era um objeto plano só com as três
+// chaves de configuração. Formato novo é { [connectionId]: { ...chaves } }.
+function isLegacyShape(raw) {
+  return raw && typeof raw === 'object' && 'transcriptionModel' in raw;
+}
+
+let store = readFile();
+if (isLegacyShape(store)) {
+  // Arquivo de uma versão anterior à migração; será envolvido no id correto
+  // assim que `migrateLegacyToId` for chamado no boot (connections.js).
+  store = { __legacy__: store };
+}
+
+function migrateLegacyToId(id) {
+  if (!store.__legacy__) return;
+  const legacy = store.__legacy__;
+  store = { [id]: legacy };
+  writeFile(store);
+}
+
+function get(id) {
+  return { ...DEFAULTS, ...(store[id] || {}) };
+}
+
+function update(id, patch) {
+  const next = get(id);
 
   if (patch.transcriptionModel !== undefined) {
     if (!ALLOWED_MODELS.includes(patch.transcriptionModel)) {
@@ -56,9 +73,14 @@ function update(patch) {
     next.onlyTranscribeOwnAudios = Boolean(patch.onlyTranscribeOwnAudios);
   }
 
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next, null, 2));
-  current = next;
-  return get();
+  store[id] = next;
+  writeFile(store);
+  return get(id);
 }
 
-module.exports = { get, update, ALLOWED_MODELS };
+function remove(id) {
+  delete store[id];
+  writeFile(store);
+}
+
+module.exports = { get, update, remove, migrateLegacyToId, ALLOWED_MODELS };
