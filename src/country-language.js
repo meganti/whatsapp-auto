@@ -75,6 +75,9 @@ const COUNTRY_LANGUAGE = {
   TH: { code: 'th', name: 'Tailandês' },
   VN: { code: 'vi', name: 'Vietnamita' },
   ID: { code: 'id', name: 'Indonésio' },
+
+  PK: { code: 'ur', name: 'Urdu' },
+  BD: { code: 'bn', name: 'Bengali' },
 };
 
 /**
