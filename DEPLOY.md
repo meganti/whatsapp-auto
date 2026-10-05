@@ -1,6 +1,6 @@
 # Deploy na VPS
 
-Checklist para publicar o bot na mesma VPS onde o Meganti Pad já roda. O bot tem um painel admin web (autenticado) servido em `ADMIN_PORT` (padrão 3000) dentro do container — nenhuma porta é publicada no host; quem expõe pra internet é o Caddy compartilhado do Meganti Pad, via rede Docker interna (`megantipad_default`) e um domínio próprio (`wpp.meganti.com.br`, HTTPS automático via Let's Encrypt). O bot roda isolado, na sua própria pasta (`~/apps/whatsapp-auto`), sem tocar no código do Meganti Pad — só compartilha a rede Docker e uma entrada a mais no `Caddyfile`.
+Checklist para publicar o bot na mesma VPS onde o Meganti Pad já roda. O bot tem um painel admin web (autenticado) servido em `ADMIN_PORT` (padrão 3000) dentro do container — nenhuma porta é publicada no host; quem expõe pra internet é o Caddy compartilhado do Meganti Pad, via rede Docker interna (`megantipad_default`) e um domínio próprio (`uhura.meganti.com.br`, HTTPS automático via Let's Encrypt). O bot roda isolado, na sua própria pasta (`~/apps/whatsapp-auto`), sem tocar no código do Meganti Pad — só compartilha a rede Docker e uma entrada a mais no `Caddyfile`.
 
 Rode os comandos abaixo direto na VPS (via SSH).
 
@@ -69,7 +69,7 @@ O `docker-compose.yml` já está com `restart: unless-stopped`, então o bot vol
 Adicione um bloco ao `Caddyfile` do Meganti Pad (`/root/megantipad/Caddyfile`) apontando para o container pelo nome (mesma rede Docker):
 
 ```
-wpp.meganti.com.br {
+uhura.meganti.com.br {
 	reverse_proxy whatsapp-transcriber:3000
 }
 ```
@@ -80,7 +80,7 @@ O domínio precisa ter um registro DNS **A** apontando para o IP da VPS antes do
 docker exec megantipad-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-Acesse `https://wpp.meganti.com.br` com o usuário/senha gerados no passo 5.
+Acesse `https://uhura.meganti.com.br` com o usuário/senha gerados no passo 5.
 
 ## 7. Atualizar depois de mudanças no código
 
@@ -98,7 +98,7 @@ docker compose up -d --build
 - [ ] Rede `megantipad_default` existe (`docker network ls`)
 - [ ] `docker compose up -d --build` rodando, `docker compose logs -f` mostra "Aguardando áudios..."
 - [ ] Pareamento feito pelo painel admin (QR code / pairing code)
-- [ ] Bloco `wpp.meganti.com.br` adicionado ao `Caddyfile` e recarregado
+- [ ] Bloco `uhura.meganti.com.br` adicionado ao `Caddyfile` e recarregado
 - [ ] Login no painel com a senha gerada no log, senha trocada em seguida
 
 ## Segurança

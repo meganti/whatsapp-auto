@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-audio-transcriber",
+  "name": "uhura",
   "version": "1.0.0",
-  "description": "Bot que transcreve automaticamente os áudios recebidos no WhatsApp usando a API Whisper da OpenAI",
+  "description": "Uhura — bot que transcreve automaticamente os áudios recebidos no WhatsApp usando a API Whisper da OpenAI",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {

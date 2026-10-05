@@ -4,7 +4,7 @@ const usage = require('./usage');
  * Traduz `text` para o idioma alvo usando gpt-4o-mini. Retorna o texto
  * traduzido (ou null se a chamada falhar) e já registra o custo em usage.js.
  */
-async function translateText(openai, text, targetLanguage) {
+async function translateText(openai, text, targetLanguage, connectionId) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
@@ -20,7 +20,7 @@ async function translateText(openai, text, targetLanguage) {
   });
 
   if (response.usage) {
-    usage.recordTranslation({
+    usage.recordTranslation(connectionId, {
       inputTokens: response.usage.prompt_tokens,
       outputTokens: response.usage.completion_tokens,
     });

@@ -112,4 +112,4 @@ function resolveContactLanguage(key) {
   return { country: phoneNumber.country, language };
 }
 
-module.exports = { resolveContactLanguage, COUNTRY_LANGUAGE };
+module.exports = { resolveContactLanguage, extractPhoneNumberJid, COUNTRY_LANGUAGE };
