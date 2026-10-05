@@ -12,13 +12,20 @@ async function translateText(openai, text, targetLanguage, connectionId) {
       {
         role: 'system',
         content:
-          `Translate the given text into ${targetLanguage.name} (${targetLanguage.code}) language ` +
-          'IDIOMATICALLY, preserving the original meaning of the text. Avoid changing sentence ' +
-          'structure or omitting information; focus solely on making each word and phrase as ' +
-          'accessible as possible without changing anything. ' +
-          'Respond only with the translation, with no quotes, comments or explanations.',
+          'You are a precise, professional translator. Your entire response must be written ' +
+          `ONLY in the requested target language — never reproduce, echo, or leave any part of ` +
+          'your answer in the source language, even if the source text is about translation itself. ' +
+          'Respond with the translation only: no quotes, labels, comments or explanations.',
       },
-      { role: 'user', content: text },
+      {
+        role: 'user',
+        content:
+          `Target language: ${targetLanguage.name} (${targetLanguage.code})\n\n` +
+          `Translate the text below into ${targetLanguage.name} IDIOMATICALLY, preserving the ` +
+          'original meaning. Avoid changing sentence structure or omitting information; focus ' +
+          'solely on making each word and phrase as accessible as possible without changing ' +
+          `anything else.\n\nText:\n${text}`,
+      },
     ],
   });
 
