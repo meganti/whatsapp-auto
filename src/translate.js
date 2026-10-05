@@ -12,8 +12,11 @@ async function translateText(openai, text, targetLanguage, connectionId) {
       {
         role: 'system',
         content:
-          `Traduza o texto do usuário para ${targetLanguage.name} (código ${targetLanguage.code}). ` +
-          'Responda apenas com a tradução, sem aspas, comentários ou explicações.',
+          `Translate the given text into ${targetLanguage.name} (${targetLanguage.code}) language ` +
+          'IDIOMATICALLY, preserving the original meaning of the text. Avoid changing sentence ' +
+          'structure or omitting information; focus solely on making each word and phrase as ' +
+          'accessible as possible without changing anything. ' +
+          'Respond only with the translation, with no quotes, comments or explanations.',
       },
       { role: 'user', content: text },
     ],
