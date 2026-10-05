@@ -88,9 +88,13 @@ function renderEventList(container, events) {
     .map((ev) => {
       const badge = EVENT_LABELS[ev.type] || ev.type;
       const text = escapeHtml(ev.message);
+      const translation = ev.meta?.translation;
+      const translationHtml = translation
+        ? `<div class="event-translation">🌐 ${escapeHtml(ev.meta.targetLanguage || 'Tradução')}: ${escapeHtml(translation)}</div>`
+        : '';
       return `<div class="event-item">
         <span class="event-badge ${ev.type}">${badge}</span>
-        <div class="event-text">${text}<div class="event-time">${formatTime(ev.timestamp)}</div></div>
+        <div class="event-text">${text}${translationHtml}<div class="event-time">${formatTime(ev.timestamp)}</div></div>
       </div>`;
     })
     .join('');
